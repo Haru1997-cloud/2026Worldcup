@@ -1,0 +1,41 @@
+name: 更新世界盃比分
+
+on:
+  schedule:
+    # 每小時執行一次（UTC 時間，換算台北時間 +8h）
+    - cron: "5 * * * *"
+  # 也可以在 GitHub 手動觸發
+  workflow_dispatch:
+
+jobs:
+  fetch-and-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 抓取最新比分
+        run: node fetch-scores.js
+
+      - name: 檢查是否有變更
+        id: check
+        run: |
+          if git diff --quiet scores.json; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: 提交並推送更新
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          git config user.name "Score Bot"
+          git config user.email "scorebot@worldcup-ai.app"
+          git add scores.json
+          git commit -m "⚽ 自動更新比分 $(date '+%Y-%m-%d %H:%M') TPE"
+          git push
