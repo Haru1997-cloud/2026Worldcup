@@ -342,19 +342,19 @@ function teamByName(name) {
   return teams.find(t => t.name === name);
 }
  
-// 旗幟：Scotland / England 用 emoji 替代（flagcdn 不支援 gb-sct / gb-eng 子旗幟）
-const flagEmoji = {
-  Scotland: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
-  England:  "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
+// Scotland / England：flagcdn 不支援子旗幟，改用 Wikipedia SVG（無隱藏 Unicode 字元）
+const customFlags = {
+  Scotland: "https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg",
+  England:  "https://upload.wikimedia.org/wikipedia/en/b/be/Flag_of_England.svg"
 };
  
 function flag(teamName) {
-  if (teamName === "TBD") return `<span style="font-size:20px">❓</span>`;
-  if (flagEmoji[teamName]) {
-    return `<span style="font-size:22px;line-height:1" title="${teamName}">${flagEmoji[teamName]}</span>`;
+  if (teamName === "TBD") return '<span style="font-size:20px">?</span>';
+  if (customFlags[teamName]) {
+    return '<img class="flag" src="' + customFlags[teamName] + '" alt="' + teamName + ' flag" loading="lazy" onerror="this.style.display=\'none\'" />';
   }
   const code = countryCodes[teamName] || "xx";
-  return `<img class="flag" src="${flagBase}${code}.png" alt="${teamName} flag" loading="lazy" onerror="this.style.display='none'" />`;
+  return '<img class="flag" src="' + flagBase + code + '.png" alt="' + teamName + ' flag" loading="lazy" onerror="this.style.display=\'none\'" />';
 }
  
 function statusLabel(status) {
