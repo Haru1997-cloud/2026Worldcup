@@ -7,7 +7,7 @@ const SCORES_JSON_URL = "scores.json";
 const userTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "Asia/Taipei";
 let externalMatchUpdates = {};
 let loadedScores = {};   // 從 scores.json 注入的比分
-
+ 
 // ─── 球隊資料 ───────────────────────────────────────────────────────────────
 const groups = {
   A: ["Mexico", "South Africa", "South Korea", "Czechia"],
@@ -23,7 +23,7 @@ const groups = {
   K: ["Portugal", "DR Congo", "Uzbekistan", "Colombia"],
   L: ["England", "Croatia", "Ghana", "Panama"]
 };
-
+ 
 const countryCodes = {
   Mexico:"mx","South Africa":"za","South Korea":"kr",Czechia:"cz",
   Canada:"ca","Bosnia and Herzegovina":"ba",Qatar:"qa",Switzerland:"ch",
@@ -39,7 +39,7 @@ const countryCodes = {
   England:"gb-eng",Croatia:"hr",Ghana:"gh",Panama:"pa",
   "TBD":"xx"
 };
-
+ 
 const ranks = {
   Mexico:15,"South Africa":61,"South Korea":22,Czechia:44,
   Canada:27,"Bosnia and Herzegovina":71,Qatar:51,Switzerland:17,
@@ -54,7 +54,7 @@ const ranks = {
   Portugal:6,"DR Congo":56,Uzbekistan:50,Colombia:13,
   England:4,Croatia:21,Ghana:57,Panama:33
 };
-
+ 
 const styleBank = [
   ["控球主導","邊路進攻","高位逼搶"],
   ["防守反擊","定位球強","低位紀律"],
@@ -63,7 +63,7 @@ const styleBank = [
   ["技術細膩","半空間滲透","後場組織"],
   ["緊密防線","快速邊鋒","門將穩定"]
 ];
-
+ 
 const playerBank = {
   Mexico:["Santiago Gimenez","Edson Alvarez","Hirving Lozano"],
   "South Africa":["Percy Tau","Teboho Mokoena","Ronwen Williams"],
@@ -91,7 +91,7 @@ const playerBank = {
   Croatia:["Luka Modric","Josko Gvardiol","Mateo Kovacic"],
   Ghana:["Mohammed Kudus","Thomas Partey","Inaki Williams"]
 };
-
+ 
 const coaches = {
   Canada:"Jesse Marsch",Brazil:"Carlo Ancelotti","United States":"Mauricio Pochettino",
   Turkey:"Vincenzo Montella",Germany:"Julian Nagelsmann",Belgium:"Rudi Garcia",
@@ -99,7 +99,7 @@ const coaches = {
   Argentina:"Lionel Scaloni",Portugal:"Roberto Martinez",England:"Thomas Tuchel",
   Croatia:"Zlatko Dalic"
 };
-
+ 
 const allTeamNames = Object.values(groups).flat();
 const teams = allTeamNames.map((name, index) => {
   const group = Object.entries(groups).find(([,names]) => names.includes(name))[0];
@@ -129,7 +129,7 @@ const teams = allTeamNames.map((name, index) => {
     risk: buildRisk(index)
   };
 });
-
+ 
 // ─── 完整賽程 (小組賽 + 淘汰賽)  ───────────────────────────────────────────
 // 格式: [date, time(TPE), stage, group, home, away, venue, probs, decimalOdds]
 // 淘汰賽的 home/away 在 TBD 時用 "TBD" 先佔位
@@ -243,18 +243,18 @@ const baseMatches = [
   // ══ 決賽 ══
   ["2026-07-19","19:00","決賽","F","TBD","TBD","MetLife Stadium",[50,0,50],2.0],
 ];
-
+ 
 // ─── 輔助函式 ───────────────────────────────────────────────────────────────
 function getDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: userTimeZone, year:"numeric", month:"2-digit", day:"2-digit"
   }).format(date);
 }
-
+ 
 function parseLocalMatchTime(matchDate, matchTime) {
   return new Date(`${matchDate}T${matchTime}:00+08:00`);
 }
-
+ 
 function deriveMatchStatus(matchDate, matchTime, score, now = new Date()) {
   if (score) return "final";
   const start = parseLocalMatchTime(matchDate, matchTime);
@@ -263,23 +263,23 @@ function deriveMatchStatus(matchDate, matchTime, score, now = new Date()) {
   if (now >= start && now <= end) return "live";
   return "awaiting";
 }
-
+ 
 function buildSummary(name, styles, rank) {
   const tier = rank <= 10 ? "具備爭冠級基本盤" : rank <= 30 ? "具備穩定晉級競爭力" : "需要靠戰術執行與比賽事件放大優勢";
   return `${name} 以「${styles.join("、")}」為主要輪廓，${tier}。模型會特別追蹤先發完整度、攻守轉換效率與定位球品質。`;
 }
-
+ 
 function buildRisk(index) {
   return ["旅途與氣候適應","後防速度落差","核心球員負荷","破密集防守效率","定位球防守","替補深度"][index % 6];
 }
-
+ 
 function predictScore(probabilities) {
   if (probabilities[0] > 60) return "2-0";
   if (probabilities[2] > 55) return "0-2";
   if (Math.abs(probabilities[0] - probabilities[2]) < 8) return "1-1";
   return probabilities[0] > probabilities[2] ? "2-1" : "1-2";
 }
-
+ 
 function buildInsight(home, away, probabilities) {
   if (home === "TBD" || away === "TBD") return "淘汰賽對戰組合確定後，AI 將自動生成本場深度分析。";
   const homeTeam = teamByName(home);
@@ -291,14 +291,14 @@ function buildInsight(home, away, probabilities) {
   const [homeP, drawP, awayP] = probabilities;
   const gap = homeP - awayP;
   const rankGap = awayRank - homeRank;
-
+ 
   const homePresses  = homeStyles.some(s => s.includes("逼搶") || s.includes("壓迫"));
   const awayCounters = awayStyles.some(s => s.includes("反擊") || s.includes("轉換"));
   const homeControls = homeStyles.some(s => s.includes("控球"));
   const awayDeep     = awayStyles.some(s => s.includes("防守") || s.includes("低位"));
   const awaySetPiece = awayStyles.some(s => s.includes("定位球"));
   const homeWide     = homeStyles.some(s => s.includes("邊路"));
-
+ 
   if (homePresses && awayCounters) return `${home} 的高位逼搶策略將主導節奏走向，但 ${away} 擅長反擊轉換，一旦壓迫線被破，後防空間將成致命弱點；${drawP >= 27 ? "平局是合理結果之一" : "兩隊直接對決性強，平局可能性偏低"}。`;
   if (homeControls && awayDeep) return `${home} 主導控球，${away} 預計擺低陣型等待機會；破密集防守的效率是 ${home} 能否拿三分的核心變數，${awayP <= 25 ? `${away} 靠定位球或快攻的單刀機率不可忽視` : "比賽可能偏向低比分"}。`;
   if (awaySetPiece && rankGap < 5) return `兩隊實力接近，${away} 的定位球威脅是關鍵差異點；${homeP > awayP ? `${home} 主場氣勢佔優，但任何一顆角球都可能翻盤` : `${away} 有機會靠定位球偷分`}。`;
@@ -308,7 +308,7 @@ function buildInsight(home, away, probabilities) {
   if (gap < -20) return `${away} 被看好（${awayP}%）${rankGap < -20 ? `，${away} FIFA 排名高出 ${Math.abs(rankGap)} 位` : ""}；${home} 若能以低位防守消耗對手體力，並在定位球或反擊中抓住機會，冷門並非不可能。`;
   return `${home}（${homeStyles[0] || "均衡踢法"}）對上 ${away}（${awayStyles[0] || "均衡踢法"}），勝率 ${homeP}% 對 ${awayP}%；臨場先發名單與比賽首個進球的時機點，將是影響最終走勢的兩大變數。`;
 }
-
+ 
 function buildAudit(home, away, score, probabilities) {
   if (home === "TBD" || away === "TBD") return null;
   const homeTeam = teamByName(home);
@@ -323,13 +323,13 @@ function buildAudit(home, away, score, probabilities) {
   const awayStyle = awayTeam?.styles[0] || "均衡踢法";
   const totalGoals = homeGoals + awayGoals;
   const highScoring = totalGoals >= 3;
-
+ 
   let reason;
   if (isCorrect && highScoring) reason = `預測方向正確；${actualWinner} 的 ${homeTeam?.styles[1] || "進攻效率"} 超出模型預期，進球數高於預估，下次需提高 xG 對高分比賽的敏感度。`;
   else if (isCorrect && !highScoring) reason = `預測方向正確；低比分節奏符合 ${homeStyle} vs ${awayStyle} 的戰術對峙預估，模型對本類型對決的判斷基準成立。`;
   else if (!isCorrect && actualWinner === "平局") reason = `預測 ${predictedWinner} 勝但實際平局；${awayTeam?.styles[1] || "客隊防線"} 紀律優於模型預期，建議提高「防守組織穩定性」對平局機率的影響權重（目前 ${drawP}%）。`;
   else reason = `預測 ${predictedWinner} 但實際由 ${actualWinner} 取勝；${awayStyle} 的臨場執行超出模型基準，需重新評估 ${awayTeam?.styles[0] || "客隊"} 在 FIFA 排名外的真實競爭力並上調冷門權重。`;
-
+ 
   return {
     prediction: `${predictedWinner} 不敗（模型信心 ${Math.max(homeP,awayP)}%）`,
     result: `${score}（${actualWinner}${actualWinner !== "平局" ? " 勝" : ""}）`,
@@ -337,47 +337,56 @@ function buildAudit(home, away, score, probabilities) {
     reason
   };
 }
-
+ 
 function teamByName(name) {
   return teams.find(t => t.name === name);
 }
-
+ 
+// 旗幟：Scotland / England 用 emoji 替代（flagcdn 不支援 gb-sct / gb-eng 子旗幟）
+const flagEmoji = {
+  Scotland: "🏴󠁧󠁢󠁳󠁣󠁴󠁿",
+  England:  "🏴󠁧󠁢󠁥󠁮󠁧󠁿"
+};
+ 
 function flag(teamName) {
-  const code = countryCodes[teamName] || "xx";
   if (teamName === "TBD") return `<span style="font-size:20px">❓</span>`;
-  return `<img class="flag" src="${flagBase}${code}.png" alt="${teamName} flag" loading="lazy" />`;
+  if (flagEmoji[teamName]) {
+    return `<span style="font-size:22px;line-height:1" title="${teamName}">${flagEmoji[teamName]}</span>`;
+  }
+  const code = countryCodes[teamName] || "xx";
+  return `<img class="flag" src="${flagBase}${code}.png" alt="${teamName} flag" loading="lazy" onerror="this.style.display='none'" />`;
 }
-
+ 
 function statusLabel(status) {
   return { upcoming:"未開賽", live:"進行中", final:"已完賽", awaiting:"待賽果" }[status] || status;
 }
-
+ 
 function stageLabel(stage, group) {
   if (stage === "小組賽") return `Group ${group}`;
   return stage;
 }
-
+ 
 // ─── 建立比賽資料（注入 scores.json 比分） ──────────────────────────────────
 function buildMatches(now = new Date()) {
   return baseMatches.map((item, index) => {
     const [date, time, stage, group, home, away, venue, probabilities, decimalOdds] = item;
     const id = `m-${String(index + 1).padStart(3, "0")}`;
-
+ 
     // 從 scores.json 取得比分（優先），或從 externalMatchUpdates 取得
     const injectedScore = loadedScores[id] || null;
     const externalUpdate = externalMatchUpdates[id] || {};
     const score = injectedScore || externalUpdate.score || null;
-
+ 
     const mergedProbs = (Array.isArray(externalUpdate.probabilities) && externalUpdate.probabilities.length === 3)
       ? externalUpdate.probabilities : probabilities;
-
+ 
     const status = deriveMatchStatus(date, time, score, now);
     const confidence = Math.min(92, Math.max(54, Math.round(
       64 + Math.abs(mergedProbs[0] - mergedProbs[2]) * 0.42 + (index % 8)
     )));
     const chosenProb = Math.max(...mergedProbs) / 100;
     const ev = chosenProb * decimalOdds - 1;
-
+ 
     return {
       id, date, time, stage, group, home, away, venue,
       probabilities: mergedProbs,
@@ -397,11 +406,11 @@ function buildMatches(now = new Date()) {
     };
   });
 }
-
+ 
 let matches = [];
 let selectedTeam = teams[0].name;
 let selectedMatchId = "m-001";
-
+ 
 // ─── 資料抓取 ───────────────────────────────────────────────────────────────
 async function fetchScoresJson() {
   try {
@@ -419,7 +428,7 @@ async function fetchScoresJson() {
     // scores.json 不存在或格式錯誤，靜默忽略
   }
 }
-
+ 
 async function fetchLiveFeed() {
   if (!LIVE_FEED_URL) return;
   try {
@@ -430,7 +439,7 @@ async function fetchLiveFeed() {
     externalMatchUpdates = updates.reduce((acc, u) => { if (u.id) acc[u.id] = u; return acc; }, {});
   } catch { externalMatchUpdates = externalMatchUpdates || {}; }
 }
-
+ 
 // ─── 渲染函式 ───────────────────────────────────────────────────────────────
 function renderDatePanel() {
   const now = new Date();
@@ -442,7 +451,7 @@ function renderDatePanel() {
   document.getElementById("todayDate").textContent = getDateKey(now);
   document.getElementById("todayTimezone").textContent = userTimeZone;
 }
-
+ 
 function renderMatchCard(match) {
   const home = teamByName(match.home) || { name: match.home, rank:"?", recent:"TBD", styles:[], players:[] };
   const away = teamByName(match.away) || { name: match.away, rank:"?", recent:"TBD", styles:[], players:[] };
@@ -450,7 +459,7 @@ function renderMatchCard(match) {
   const best = homeP >= awayP ? homeP : awayP;
   const evClass = match.ev >= 0 ? "positive" : "negative";
   const isTBD = match.home === "TBD" || match.away === "TBD";
-
+ 
   return `
     <article class="match-card">
       <div class="match-meta">
@@ -491,44 +500,83 @@ function renderMatchCard(match) {
       </div>
     </article>`;
 }
-
+ 
 function renderDashboard() {
-  const todayKey = getDateKey();
-  let visibleMatches = matches.filter(m => m.date === todayKey);
+  const now = new Date();
+  const todayKey = getDateKey(now);
   const title = document.querySelector("#dashboard .section-title h2");
   const helper = document.querySelector("#dashboard .section-title span");
-
+ 
+  // 取得所有有比賽的日期（排序）
+  const allDates = [...new Set(matches.map(m => m.date))].sort();
+ 
+  // 找今天有沒有比賽
+  let visibleMatches = matches.filter(m => m.date === todayKey);
+  let displayDate = todayKey;
+  let labelMode = "today"; // "today" | "recent" | "next" | "done"
+ 
   if (!visibleMatches.length) {
-    const nextDate = matches.find(m => parseLocalMatchTime(m.date, m.time) > new Date())?.date;
-    visibleMatches = nextDate ? matches.filter(m => m.date === nextDate) : [];
-    title.textContent = nextDate ? `下一個比賽日：${nextDate}` : "世界盃賽程已全部結束";
-    helper.textContent = "賽後分析與模型檢討已更新";
-  } else {
+    // 找最近已過去的比賽日（往前找）
+    const pastDates = allDates.filter(d => d < todayKey);
+    const futureDates = allDates.filter(d => d > todayKey);
+ 
+    if (pastDates.length) {
+      // 優先顯示最近一個已完賽的比賽日
+      displayDate = pastDates[pastDates.length - 1];
+      visibleMatches = matches.filter(m => m.date === displayDate);
+      labelMode = "recent";
+    } else if (futureDates.length) {
+      // 還沒開賽就顯示下一個比賽日
+      displayDate = futureDates[0];
+      visibleMatches = matches.filter(m => m.date === displayDate);
+      labelMode = "next";
+    } else {
+      labelMode = "done";
+    }
+  }
+ 
+  // 更新標題與副標
+  if (labelMode === "today") {
     title.textContent = "今日重點對戰";
     helper.textContent = "賽前預測、即時狀態與賽後差距會在同一卡片內更新";
+  } else if (labelMode === "recent") {
+    title.textContent = `最近比賽日：${displayDate}`;
+    helper.textContent = "今日無排程，顯示最近一個比賽日的結果與賽後分析";
+  } else if (labelMode === "next") {
+    title.textContent = `下一個比賽日：${displayDate}`;
+    helper.textContent = "賽前預測已就緒，比賽開始後即時更新";
+  } else {
+    title.textContent = "世界盃賽程已全部結束";
+    helper.textContent = "感謝追蹤本屆世界盃 AI 分析台";
   }
-
+ 
   document.getElementById("todayMatches").innerHTML = visibleMatches.length
     ? visibleMatches.map(renderMatchCard).join("")
-    : `<div class="empty-state">今天沒有賽程。</div>`;
+    : `<div class="empty-state">目前無賽程資料。</div>`;
+ 
+  // 指標列：顯示當前 displayDate 的統計
   document.getElementById("todayCount").textContent = visibleMatches.length;
   document.getElementById("avgConfidence").textContent = visibleMatches.length
-    ? Math.round(visibleMatches.reduce((s,m) => s+m.confidence, 0) / visibleMatches.length) : 0;
-  document.getElementById("positiveEvCount").textContent = visibleMatches.filter(m => m.ev > 0).length;
+    ? Math.round(visibleMatches.reduce((s, m) => s + m.confidence, 0) / visibleMatches.length)
+    : "—";
+  document.getElementById("positiveEvCount").textContent =
+    visibleMatches.filter(m => m.ev > 0).length;
 }
-
+ 
 function renderFilters() {
-  const dates = [...new Set(matches.map(m => m.date))].sort();
-  const todayKey = getDateKey();
+  // matches 此時還是空的（init 時先呼叫），改為用 baseMatches 的日期先填選單
+  const dates = [...new Set(baseMatches.map(m => m[0]))].sort();
+  // 日期篩選預設「全部」，讓賽程表一開始就顯示完整賽程
   document.getElementById("dateFilter").innerHTML =
-    `<option value="all">全部</option>` +
-    dates.map(d => `<option value="${d}" ${d===todayKey?"selected":""}>${d}</option>`).join("");
-
-  const stageOptions = [...new Set(matches.map(m => m.stage))];
+    `<option value="all" selected>全部日期</option>` +
+    dates.map(d => `<option value="${d}">${d}</option>`).join("");
+ 
+  const stageOptions = ["小組賽","16強","八強","四強","季軍賽","決賽"];
   const stageEl = document.getElementById("stageFilter");
-  if (stageEl) stageEl.innerHTML = `<option value="all">全部</option>` + stageOptions.map(s=>`<option value="${s}">${s}</option>`).join("");
-
-  const groupOptions = Object.keys(groups).map(g=>`<option value="${g}">Group ${g}</option>`).join("");
+  if (stageEl) stageEl.innerHTML = `<option value="all">全部賽制</option>` +
+    stageOptions.map(s => `<option value="${s}">${s}</option>`).join("");
+ 
+  const groupOptions = Object.keys(groups).map(g => `<option value="${g}">Group ${g}</option>`).join("");
   const groupFilterEl = document.getElementById("groupFilter");
   if (groupFilterEl && !groupFilterEl.querySelector("option[value='A']")) {
     groupFilterEl.insertAdjacentHTML("beforeend", groupOptions);
@@ -538,21 +586,21 @@ function renderFilters() {
     teamGroupFilterEl.insertAdjacentHTML("beforeend", groupOptions);
   }
 }
-
+ 
 function renderSchedule() {
   const date   = document.getElementById("dateFilter").value;
   const group  = document.getElementById("groupFilter").value;
   const status = document.getElementById("statusFilter").value;
   const stageEl = document.getElementById("stageFilter");
   const stage  = stageEl ? stageEl.value : "all";
-
+ 
   const filtered = matches.filter(m => {
     return (date   === "all" || m.date  === date)
         && (group  === "all" || m.group === group)
         && (status === "all" || m.status === status)
         && (stage  === "all" || m.stage  === stage);
   });
-
+ 
   document.getElementById("scheduleRows").innerHTML = filtered.map(match => {
     const evClass = match.ev >= 0 ? "positive" : "negative";
     return `<tr>
@@ -568,7 +616,7 @@ function renderSchedule() {
     </tr>`;
   }).join("");
 }
-
+ 
 function renderTeams() {
   const query = document.getElementById("teamSearch").value.trim().toLowerCase();
   const group = document.getElementById("teamGroupFilter").value;
@@ -586,7 +634,7 @@ function renderTeams() {
     </article>`).join("");
   renderTeamDetail(selectedTeam);
 }
-
+ 
 function renderTeamDetail(teamName) {
   const team = teamByName(teamName);
   if (!team) return;
@@ -609,14 +657,14 @@ function renderTeamDetail(teamName) {
     <h3>潛在風險</h3>
     <p>${team.risk}。正式版會把傷病、停賽、旅行與即時先發納入每日校正。</p>`;
 }
-
+ 
 function renderMatchDetail(matchId) {
   const match = matches.find(m => m.id === matchId) || matches[0];
   selectedMatchId = match.id;
   const home = teamByName(match.home) || { name:match.home, formScore:50, styles:[], players:[] };
   const away = teamByName(match.away) || { name:match.away, formScore:50, styles:[], players:[] };
   const evClass = match.ev >= 0 ? "positive" : "negative";
-
+ 
   document.getElementById("matchDetail").innerHTML = `
     <article class="match-detail-card">
       <div class="match-detail-top">
@@ -668,27 +716,51 @@ function renderMatchDetail(matchId) {
       </div>
     </article>`;
 }
-
+ 
 function renderAudit() {
   const audited = matches.filter(m => m.audit);
-  // 計算統計
   const total = audited.length;
   const correct = audited.filter(m => m.audit.delta.startsWith("✓")).length;
-  const pct = total ? Math.round(correct/total*100) : 0;
-  document.getElementById("auditSummary").textContent =
-    total ? `已分析 ${total} 場完賽 · 預測正確 ${correct} 場 · 準確率 ${pct}%` : "尚無完賽資料";
-
+  const pct = total ? Math.round(correct / total * 100) : 0;
+ 
+  // 更新 auditSummary 橫幅
+  const summaryEl = document.getElementById("auditSummary");
+  if (summaryEl) {
+    summaryEl.textContent = total
+      ? `已分析 ${total} 場完賽 · 預測正確 ${correct} 場 · 準確率 ${pct}%`
+      : "比賽結束並讀取比分後，賽後檢討將自動顯示";
+    summaryEl.style.color = total ? "var(--green)" : "var(--muted)";
+  }
+ 
+  // 用真實統計覆蓋模型表現卡片（取代寫死的假數字）
+  if (total > 0) {
+    const hitRateEl = document.querySelector(".model-card:nth-child(1) strong");
+    if (hitRateEl) hitRateEl.textContent = `${pct}%`;
+    const hitDescEl = document.querySelector(".model-card:nth-child(1) p");
+    if (hitDescEl) hitDescEl.textContent = `依本屆 ${total} 場已完賽比賽即時計算。`;
+ 
+    // 簡易 Brier Score 估算：正確=0.1 錯誤=0.4 平均
+    const brierEst = ((correct * 0.10) + ((total - correct) * 0.40)) / total;
+    const brierEl = document.querySelector(".model-card:nth-child(2) strong");
+    if (brierEl) brierEl.textContent = brierEst.toFixed(3);
+  }
+ 
+  // 賽後明細表
   document.getElementById("auditRows").innerHTML = audited.length
-    ? audited.map(m=>`<tr>
-        <td>${m.home} vs ${m.away}<br><small style="color:var(--muted)">${m.date} ${stageLabel(m.stage,m.group)}</small></td>
+    ? audited.map(m => `<tr>
+        <td>${m.home} vs ${m.away}<br>
+          <small style="color:var(--muted)">${m.date} · ${stageLabel(m.stage, m.group)}</small>
+        </td>
         <td>${m.audit.prediction}</td>
         <td>${m.audit.result}</td>
-        <td style="white-space:nowrap">${m.audit.delta}</td>
+        <td style="white-space:nowrap;color:${m.audit.delta.startsWith("✓") ? "var(--green)" : "var(--red)"}">${m.audit.delta}</td>
         <td style="font-size:13px;color:#bdd0ca">${m.audit.reason}</td>
       </tr>`).join("")
-    : `<tr><td colspan="5" style="color:var(--muted)">比賽結束並讀取到比分後，賽後檢討將自動顯示於此。</td></tr>`;
+    : `<tr><td colspan="5" style="color:var(--muted);padding:20px">
+        ⏳ 比賽結束並從 scores.json 讀取到比分後，賽後檢討將自動出現在這裡。
+      </td></tr>`;
 }
-
+ 
 function updateSyncLabels() {
   const syncChip = document.querySelector(".sync-chip");
   if (!syncChip) return;
@@ -697,7 +769,7 @@ function updateSyncLabels() {
   }).format(new Date());
   syncChip.textContent = `本地排程自動刷新 · 最近更新 ${nowText}`;
 }
-
+ 
 async function refreshData() {
   await fetchScoresJson();
   await fetchLiveFeed();
@@ -708,13 +780,13 @@ async function refreshData() {
   renderAudit();
   updateSyncLabels();
 }
-
+ 
 function switchView(viewId) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === viewId));
   document.querySelectorAll(".nav-button").forEach(b => b.classList.toggle("active", b.dataset.view === viewId));
   window.scrollTo({ top:0, behavior:"smooth" });
 }
-
+ 
 function bindEvents() {
   document.body.addEventListener("click", e => {
     const nav = e.target.closest("[data-view]");
@@ -733,7 +805,7 @@ function bindEvents() {
     document.getElementById(id)?.addEventListener("change", renderTeams);
   });
 }
-
+ 
 async function init() {
   renderFilters();
   renderTeams();
@@ -741,5 +813,6 @@ async function init() {
   await refreshData();
   setInterval(refreshData, REFRESH_INTERVAL_MS);
 }
-
+ 
 init();
+ 
