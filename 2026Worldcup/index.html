@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="zh-Hant">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>2026 FIFA 世界盃 AI 運彩分析台</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand">
+        <span class="brand-mark">26</span>
+        <div>
+          <strong>World Cup AI Edge</strong>
+          <span>2026 FIFA 世界盃運彩分析</span>
+        </div>
+      </div>
+      <nav class="nav" aria-label="主要導覽">
+        <button class="nav-button active" data-view="dashboard">今日</button>
+        <button class="nav-button" data-view="schedule">賽程</button>
+        <button class="nav-button" data-view="teams">球隊</button>
+        <button class="nav-button" data-view="model">模型表現</button>
+        <button class="nav-button" data-view="about">方法與聲明</button>
+      </nav>
+    </header>
+
+    <main>
+      <section class="view active" id="dashboard">
+        <div class="dashboard-head">
+          <div>
+            <p class="eyebrow">Matchday Intelligence</p>
+            <h1>今日世界盃賽程與 AI 勝率</h1>
+            <p class="subcopy">以球隊強度、球員狀態、戰術相剋、賠率市場與賽後校正模型，建立每日可追蹤的賽事研究台。</p>
+          </div>
+          <aside class="date-panel" aria-label="今日日期">
+            <span id="todayWeekday">Thursday</span>
+            <strong id="todayDate">2026-06-11</strong>
+            <small id="todayTimezone">Asia/Taipei</small>
+          </aside>
+        </div>
+
+        <div class="metric-strip">
+          <div>
+            <span>今日賽事</span>
+            <strong id="todayCount">0</strong>
+          </div>
+          <div>
+            <span>平均信心</span>
+            <strong id="avgConfidence">0</strong>
+          </div>
+          <div>
+            <span>正 EV 機會</span>
+            <strong id="positiveEvCount">0</strong>
+          </div>
+          <div>
+            <span>模型更新</span>
+            <strong>賽後自校正</strong>
+          </div>
+        </div>
+
+        <div class="section-title">
+          <h2>今日重點對戰</h2>
+          <span>賽前預測、期望值與賽後差距會在同一卡片內更新</span>
+        </div>
+        <div class="match-list" id="todayMatches"></div>
+      </section>
+
+      <section class="view" id="schedule">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">Full Schedule</p>
+            <h1>賽程總覽</h1>
+          </div>
+          <div class="filters">
+            <label>
+              日期
+              <select id="dateFilter"></select>
+            </label>
+            <label>
+              小組
+              <select id="groupFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label>
+              賽制
+              <select id="stageFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+            <label>
+              狀態
+              <select id="statusFilter">
+                <option value="all">全部</option>
+                <option value="upcoming">未開賽</option>
+                <option value="live">進行中</option>
+                <option value="final">已完賽</option>
+                <option value="awaiting">待賽果</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>日期</th>
+                <th>時間</th>
+                <th>賽制</th>
+                <th>對戰</th>
+                <th>場地</th>
+                <th>勝率</th>
+                <th>EV</th>
+                <th>信心</th>
+                <th>狀態 / 比分</th>
+              </tr>
+            </thead>
+            <tbody id="scheduleRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="teams">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">Team Database</p>
+            <h1>48 隊球隊分析庫</h1>
+          </div>
+          <div class="filters">
+            <label>
+              搜尋球隊
+              <input id="teamSearch" type="search" placeholder="輸入國家、風格、球員" />
+            </label>
+            <label>
+              小組
+              <select id="teamGroupFilter">
+                <option value="all">全部</option>
+              </select>
+            </label>
+          </div>
+        </div>
+        <div class="team-layout">
+          <div class="team-grid" id="teamGrid"></div>
+          <aside class="team-detail" id="teamDetail"></aside>
+        </div>
+      </section>
+
+      <section class="view" id="match">
+        <button class="back-button" data-view="dashboard">返回今日總覽</button>
+        <div id="matchDetail"></div>
+      </section>
+
+      <section class="view" id="model">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">Model Performance</p>
+            <h1>模型命中率與賽後學習</h1>
+          </div>
+          <span class="sync-chip">最近同步：2026-06-17 23:00 TPE</span>
+          <span id="scoresUpdated" style="color:var(--muted);font-size:12px;align-self:center"></span>
+        </div>
+        <div class="model-grid">
+          <div class="model-card">
+            <span>歷史預測命中率</span>
+            <strong>61.8%</strong>
+            <p>示範資料，正式版會依每場賽後結果更新。</p>
+          </div>
+          <div class="model-card">
+            <span>Brier Score</span>
+            <strong>0.184</strong>
+            <p>越低代表機率預測越接近實際結果。</p>
+          </div>
+          <div class="model-card">
+            <span>平均 Log Loss</span>
+            <strong>0.72</strong>
+            <p>懲罰過度自信但錯誤的預測。</p>
+          </div>
+          <div class="model-card">
+            <span>本輪權重調整</span>
+            <strong>+8%</strong>
+            <p>提高臨場陣容與 xG 差距的影響。</p>
+          </div>
+        </div>
+        <div class="learning-panel">
+          <h2>賽後校正流程</h2>
+          <ol>
+            <li>抓取實際比分、xG、射門、紅黃牌、換人與傷退事件。</li>
+            <li>比對賽前勝率、比分預測與賽果，計算誤差。</li>
+            <li>標註誤差原因，例如紅牌、戰術變陣、門將超常發揮或射門品質偏離。</li>
+            <li>更新球隊狀態分數、球員健康度與戰術相剋權重。</li>
+          </ol>
+        </div>
+        <div style="margin-bottom:12px;padding:12px 16px;border:1px solid var(--line);border-radius:8px;background:rgba(17,25,24,0.9);color:var(--green);font-weight:700" id="auditSummary">載入中...</div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>比賽</th>
+                <th>預測</th>
+                <th>實際</th>
+                <th>差距</th>
+                <th>檢討</th>
+              </tr>
+            </thead>
+            <tbody id="auditRows"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <section class="view" id="about">
+        <div class="page-head">
+          <div>
+            <p class="eyebrow">Method & Risk</p>
+            <h1>模型方法、資料來源與風險聲明</h1>
+          </div>
+        </div>
+        <div class="about-grid">
+          <article>
+            <h2>分析因子</h2>
+            <p>模型整合 Elo、FIFA ranking、近期國際賽、球員能力、戰術風格、賠率市場、場地氣候、休息天數與即時事件。</p>
+          </article>
+          <article>
+            <h2>期望值公式</h2>
+            <code>EV = 預測勝率 × 十進位賠率 - 1</code>
+            <p>正 EV 不等於保證獲利，只代表在模型假設下賠率可能高於合理價。</p>
+          </article>
+          <article>
+            <h2>信心指數</h2>
+            <code>模型一致性 + 數據完整度 + 賠率合理性 + 陣容確定性 - 風險懲罰</code>
+          </article>
+          <article class="risk">
+            <h2>理性投注聲明</h2>
+            <p>本網站僅提供體育數據分析與機率研究，不保證投注獲利。使用者需遵守所在地法律，未成年人不得參與投注，請自行承擔風險。</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <span>資料來源需於正式版串接 FIFA 官方、授權賽事資料、球員資料與合法賠率 API。</span>
+      <span>Demo build · 2026 World Cup AI Edge</span>
+    </footer>
+
+    <script src="config.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>

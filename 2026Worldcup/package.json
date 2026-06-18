@@ -1,0 +1,12 @@
+{
+  "name": "worldcup-ai-score-fetcher",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Auto-fetches FIFA World Cup 2026 scores from ESPN public API",
+  "scripts": {
+    "fetch": "node fetch-scores.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
