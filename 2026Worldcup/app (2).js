@@ -4,19 +4,19 @@
 // 賠率：本網站不提供真實賠率數字。改為提供「轉虧轉盈門檻」分析工具，
 //       使用者可對照台灣運彩 (https://article.sportslottery.com.tw/) 公告賠率自行判斷。
 // ════════════════════════════════════════════════════════════════════════
-
+ 
 const REFRESH_INTERVAL_MS = 60000; // 每 60 秒重新抓一次 ESPN 資料
 const userTimeZone = "Asia/Taipei"; // 全站固定以台灣時間呈現（賽程網站慣例）
 const TWSL_URL = "https://article.sportslottery.com.tw/"; // 台灣運彩官網（賠率請至此查詢）
-
+ 
 // ESPN 公開 scoreboard API（無需 key）。一次抓整個賽事期間，前端自行依日期分組。
 const ESPN_SCOREBOARD_URL =
   "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=300&dates=20260611-20260719";
-
+ 
 // CORS 备援：部分瀏覽器環境可能擋下對 espn.com 的直接請求，
 // 此時改走唯讀公開 CORS 代理（r.jina.ai）取得相同 JSON 內容。
 const ESPN_FALLBACK_PROXY = "https://r.jina.ai/" + ESPN_SCOREBOARD_URL;
-
+ 
 // ─── 球隊背景資料（戰術風格、球員、教練 — 用於 AI 分析文字，不含賽程本身）────
 const countryCodes = {
   Mexico:"mx","South Africa":"za","South Korea":"kr",Czechia:"cz",
@@ -33,7 +33,7 @@ const countryCodes = {
   England:"gb-eng",Croatia:"hr",Ghana:"gh",Panama:"pa",
   "Korea Republic":"kr","Bosnia & Herzegovina":"ba"
 };
-
+ 
 const styleBank = [
   ["控球主導","邊路進攻","高位逼搶"],
   ["防守反擊","定位球強","低位紀律"],
@@ -42,7 +42,7 @@ const styleBank = [
   ["技術細膩","半空間滲透","後場組織"],
   ["緊密防線","快速邊鋒","門將穩定"]
 ];
-
+ 
 const ranks = {
   Mexico:15,"South Africa":61,"South Korea":22,Czechia:44,
   Canada:27,"Bosnia and Herzegovina":71,Qatar:51,Switzerland:17,
@@ -57,7 +57,7 @@ const ranks = {
   Portugal:6,"DR Congo":56,Uzbekistan:50,Colombia:13,
   England:4,Croatia:21,Ghana:57,Panama:33
 };
-
+ 
 const playerBank = {
   Mexico:["Santiago Gimenez","Edson Alvarez","Hirving Lozano"],
   "South Africa":["Percy Tau","Teboho Mokoena","Ronwen Williams"],
@@ -108,7 +108,7 @@ const playerBank = {
   Uzbekistan:["Eldor Shomurodov","Abbosbek Fayzullaev","Jasur Yakhshiboev"],
   Panama:["Adalberto Carrasquilla","Cesar Yanis","Jose Fajardo"]
 };
-
+ 
 const coaches = {
   Mexico:"Javier Aguirre","South Africa":"Hugo Broos","South Korea":"Hong Myung-bo",
   Czechia:"Ivan Hasek",Canada:"Jesse Marsch","Bosnia and Herzegovina":"Sergej Barbarez",
@@ -127,7 +127,7 @@ const coaches = {
   Colombia:"Nestor Lorenzo",England:"Thomas Tuchel",Croatia:"Zlatko Dalic",
   Ghana:"Otto Addo",Panama:"Thomas Christiansen"
 };
-
+ 
 const allTeamNames = Object.keys(ranks);
 const teams = allTeamNames.map((name, index) => {
   const rank = ranks[name] || 60;
@@ -155,16 +155,16 @@ const teams = allTeamNames.map((name, index) => {
     risk: ["旅途與氣候適應", "後防速度落差", "核心球員負荷", "破密集防守效率", "定位球防守", "替補深度"][index % 6]
   };
 });
-
+ 
 function buildTeamSummary(name, styles, rank) {
   const tier = rank <= 10 ? "具備爭冠級基本盤" : rank <= 30 ? "具備穩定晉級競爭力" : "需要靠戰術執行與比賽事件放大優勢";
   return name + " 以「" + styles.join("、") + "」為主要輪廓，" + tier + "。模型會特別追蹤先發完整度、攻守轉換效率與定位球品質。";
 }
-
+ 
 function teamByName(name) {
   return teams.find(t => t.name === name) || null;
 }
-
+ 
 function normalizeTeamName(espnName) {
   const map = {
     "Türkiye": "Turkey", "Curaçao": "Curacao", "Côte d'Ivoire": "Ivory Coast",
@@ -173,12 +173,12 @@ function normalizeTeamName(espnName) {
   };
   return map[espnName] || espnName;
 }
-
+ 
 const customFlags = {
   Scotland: "https://upload.wikimedia.org/wikipedia/commons/1/10/Flag_of_Scotland.svg",
   England:  "https://upload.wikimedia.org/wikipedia/en/b/be/Flag_of_England.svg"
 };
-
+ 
 function flag(teamName) {
   if (!teamName || teamName === "TBD") return '<span style="font-size:20px">?</span>';
   if (customFlags[teamName]) {
@@ -187,7 +187,7 @@ function flag(teamName) {
   const code = countryCodes[teamName] || "xx";
   return '<img class="flag" src="https://flagcdn.com/w40/' + code + '.png" alt="' + teamName + ' flag" loading="lazy" onerror="this.style.display=\'none\'" />';
 }
-
+ 
 // ─── 賽制中文標籤 ────────────────────────────────────────────────────────
 function stageLabel(espnStageNote) {
   if (!espnStageNote) return "小組賽";
@@ -201,11 +201,11 @@ function stageLabel(espnStageNote) {
   if (s.includes("final")) return "決賽";
   return espnStageNote;
 }
-
+ 
 function statusLabel(status) {
   return { upcoming: "未開賽", live: "進行中", final: "已完賽" }[status] || "待開賽";
 }
-
+ 
 // ─── AI 賽前分析文字（依戰術風格動態生成，每場不同）──────────────────────
 function buildInsight(home, away, probabilities) {
   const homeTeam = teamByName(home);
@@ -218,14 +218,14 @@ function buildInsight(home, away, probabilities) {
   const [homeP, drawP, awayP] = probabilities;
   const gap = homeP - awayP;
   const rankGap = awayRank - homeRank;
-
+ 
   const homePresses  = homeStyles.some(s => s.includes("逼搶") || s.includes("壓迫"));
   const awayCounters = awayStyles.some(s => s.includes("反擊") || s.includes("轉換"));
   const homeControls = homeStyles.some(s => s.includes("控球"));
   const awayDeep     = awayStyles.some(s => s.includes("防守") || s.includes("低位"));
   const awaySetPiece = awayStyles.some(s => s.includes("定位球"));
   const homeWide     = homeStyles.some(s => s.includes("邊路"));
-
+ 
   if (homePresses && awayCounters) return home + " 的高位逼搶策略將主導節奏走向，但 " + away + " 擅長反擊轉換，一旦壓迫線被破，後防空間將成致命弱點；" + (drawP >= 27 ? "平局是合理結果之一" : "兩隊直接對決性強，平局可能性偏低") + "。";
   if (homeControls && awayDeep) return home + " 主導控球，" + away + " 預計擺低陣型等待機會；破密集防守的效率是 " + home + " 能否拿三分的核心變數，" + (awayP <= 25 ? away + " 靠定位球或快攻的單刀機率不可忽視" : "比賽可能偏向低比分") + "。";
   if (awaySetPiece && rankGap < 5) return "兩隊實力接近，" + away + " 的定位球威脅是關鍵差異點；" + (homeP > awayP ? home + " 主場氣勢佔優，但任何一顆角球都可能翻盤" : away + " 有機會靠定位球偷分") + "。";
@@ -235,7 +235,7 @@ function buildInsight(home, away, probabilities) {
   if (gap < -20) return away + " 被看好（" + awayP + "%）" + (rankGap < -20 ? "，" + away + " FIFA 排名高出 " + Math.abs(rankGap) + " 位" : "") + "；" + home + " 若能以低位防守消耗對手體力，並在定位球或反擊中抓住機會，冷門並非不可能。";
   return home + "（" + (homeStyles[0] || "均衡踢法") + "）對上 " + away + "（" + (awayStyles[0] || "均衡踢法") + "），勝率 " + homeP + "% 對 " + awayP + "%；臨場先發名單與比賽首個進球的時機點，將是影響最終走勢的兩大變數。";
 }
-
+ 
 // ─── 模型勝率推算（無真實賠率時，由排名差與狀態分推算機率分佈）──────────
 function computeProbabilities(homeName, awayName) {
   const home = teamByName(homeName);
@@ -252,50 +252,50 @@ function computeProbabilities(homeName, awayName) {
   if (drawP < 14) { const adj = 14 - drawP; drawP = 14; homeP -= Math.round(adj / 2); awayP -= adj - Math.round(adj / 2); }
   return [homeP, drawP, awayP];
 }
-
+ 
 // ─── 泊松分布：大小盤 / 雙方進球 (BTTS) ─────────────────────────────────
 // 原理：用兩隊「狀態分」換算各自預期進球數 λ，再用卜瓦松分布算出每個總進球數的機率，
 // 加總算出大 2.5 / 小 2.5 的機率，反推轉正門檻賠率。
 // 此為示範統計模型，非球探等級的射門品質 (xG) 模型，僅供參考。
-
+ 
 function poissonPmf(k, lambda) {
   // P(X = k) = (λ^k * e^-λ) / k!
   let factorial = 1;
   for (let i = 2; i <= k; i++) factorial *= i;
   return (Math.pow(lambda, k) * Math.exp(-lambda)) / factorial;
 }
-
+ 
 function estimateExpectedGoals(homeName, awayName) {
   const home = teamByName(homeName);
   const away = teamByName(awayName);
   const homeForm = home ? home.formScore : 60;
   const awayForm = away ? away.formScore : 60;
-
+ 
   // 聯盟平均每隊每場進球基準值（世界盃賽事約 1.3 球/隊，較聯賽略低）
   const baseGoals = 1.30;
-
+ 
   // 狀態分每高於聯盟平均（約60分）10分，預期進球 +12%；主場加 8% 進攻加成
   const homeAttack = baseGoals * (1 + (homeForm - 60) / 10 * 0.12) * 1.08;
   const awayAttack = baseGoals * (1 + (awayForm - 60) / 10 * 0.12) * 0.94;
-
+ 
   // 對方防守強度反向影響：對手狀態分越高，己方預期進球微幅下修
   const homeDefenseFactor = 1 - Math.max(-0.18, Math.min(0.18, (awayForm - 60) / 100));
   const awayDefenseFactor = 1 - Math.max(-0.18, Math.min(0.18, (homeForm - 60) / 100));
-
+ 
   const lambdaHome = Math.max(0.4, +(homeAttack * homeDefenseFactor).toFixed(2));
   const lambdaAway = Math.max(0.3, +(awayAttack * awayDefenseFactor).toFixed(2));
-
+ 
   return { lambdaHome, lambdaAway };
 }
-
+ 
 function buildGoalMarket(homeName, awayName) {
   const { lambdaHome, lambdaAway } = estimateExpectedGoals(homeName, awayName);
   const maxGoals = 8; // 計算到單隊 8 球已覆蓋 99.9%+ 機率
-
+ 
   // 建立聯合機率矩陣 P(主隊進 i 球 且 客隊進 j 球) = P(i;λh) × P(j;λa)（獨立性假設）
   let over25 = 0, under25 = 0, btts = 0, noBtts = 0;
   let scoreProbs = []; // 用於找出最可能比分
-
+ 
   for (let i = 0; i <= maxGoals; i++) {
     const pi = poissonPmf(i, lambdaHome);
     for (let j = 0; j <= maxGoals; j++) {
@@ -307,13 +307,13 @@ function buildGoalMarket(homeName, awayName) {
       scoreProbs.push({ score: i + "-" + j, p });
     }
   }
-
+ 
   scoreProbs.sort((a, b) => b.p - a.p);
   const mostLikelyScore = scoreProbs[0].score;
-
+ 
   const toPct = x => Math.round(x * 100);
   const toThreshold = p => p > 0.01 ? (1 / p).toFixed(2) : "—";
-
+ 
   return {
     lambdaHome, lambdaAway,
     over25Pct: toPct(over25),
@@ -329,7 +329,7 @@ function buildGoalMarket(homeName, awayName) {
     }
   };
 }
-
+ 
 // ─── 賽後檢討文字 ──────────────────────────────────────────────────────
 function buildAudit(home, away, homeGoals, awayGoals, probabilities) {
   const homeTeam = teamByName(home);
@@ -343,13 +343,13 @@ function buildAudit(home, away, homeGoals, awayGoals, probabilities) {
   const awayStyle = (awayTeam && awayTeam.styles[0]) || "均衡踢法";
   const totalGoals = homeGoals + awayGoals;
   const highScoring = totalGoals >= 3;
-
+ 
   let reason;
   if (isCorrect && highScoring) reason = "預測方向正確；" + actualWinner + " 的進攻效率超出模型預期，進球數高於預估，下次需提高 xG 對高分比賽的敏感度。";
   else if (isCorrect && !highScoring) reason = "預測方向正確；低比分節奏符合 " + homeStyle + " vs " + awayStyle + " 的戰術對峙預估，模型對本類型對決的判斷基準成立。";
   else if (!isCorrect && actualWinner === "平局") reason = "預測 " + predictedWinner + " 勝但實際平局；客隊防線紀律優於模型預期，建議提高「防守組織穩定性」對平局機率的影響權重（目前 " + drawP + "%）。";
   else reason = "預測 " + predictedWinner + " 但實際由 " + actualWinner + " 取勝；" + awayStyle + " 的臨場執行超出模型基準，需重新評估排名外的真實競爭力並上調冷門權重。";
-
+ 
   return {
     prediction: predictedWinner + " 不敗（模型信心 " + Math.max(homeP, awayP) + "%）",
     result: homeGoals + "-" + awayGoals + "（" + actualWinner + (actualWinner !== "平局" ? " 勝" : "") + "）",
@@ -357,7 +357,7 @@ function buildAudit(home, away, homeGoals, awayGoals, probabilities) {
     isCorrect, reason
   };
 }
-
+ 
 // ─── EV 門檻分析（取代假賠率：告訴使用者賠率要多少才轉正）─────────────────
 function buildEvThreshold(probabilities) {
   const [homeP, drawP, awayP] = probabilities;
@@ -368,14 +368,14 @@ function buildEvThreshold(probabilities) {
     away: toThreshold(awayP)
   };
 }
-
+ 
 // ════════════════════════════════════════════════════════════════════════
 // ESPN 即時資料抓取與正規化
 // ════════════════════════════════════════════════════════════════════════
 let espnEvents = [];      // ESPN 原始 events
 let matches = [];         // 正規化後的比賽物件（給渲染函式用）
 let dataSourceState = "loading"; // loading | live | error
-
+ 
 async function fetchEspnSchedule() {
   // 先試直接抓（多數瀏覽器環境 ESPN site API 允許跨網域 GET）
   try {
@@ -385,7 +385,7 @@ async function fetchEspnSchedule() {
       if (Array.isArray(data.events)) return data.events;
     }
   } catch (e) { /* 繼續嘗試備援 */ }
-
+ 
   // 備援：透過唯讀代理重新嘗試一次
   try {
     const res2 = await fetch(ESPN_FALLBACK_PROXY, { cache: "no-store" });
@@ -395,10 +395,10 @@ async function fetchEspnSchedule() {
       if (Array.isArray(data.events)) return data.events;
     }
   } catch (e) { /* 兩種方式都失敗 */ }
-
+ 
   return null;
 }
-
+ 
 function normalizeEvents(events) {
   return events.map(event => {
     const competition = event.competitions && event.competitions[0];
@@ -407,29 +407,29 @@ function normalizeEvents(events) {
     const homeC = competitors.find(c => c.homeAway === "home");
     const awayC = competitors.find(c => c.homeAway === "away");
     if (!homeC || !awayC) return null;
-
+ 
     const home = normalizeTeamName(homeC.team ? (homeC.team.displayName || homeC.team.name) : "TBD");
     const away = normalizeTeamName(awayC.team ? (awayC.team.displayName || awayC.team.name) : "TBD");
     const homeGoals = homeC.score !== undefined ? parseInt(homeC.score, 10) : null;
     const awayGoals = awayC.score !== undefined ? parseInt(awayC.score, 10) : null;
-
+ 
     const statusType = (competition.status && competition.status.type && competition.status.type.name) || "";
     let status = "upcoming";
     if (statusType === "STATUS_FINAL" || statusType === "STATUS_FULL_TIME") status = "final";
     else if (statusType.includes("IN_PROGRESS") || statusType.includes("HALFTIME") || statusType === "STATUS_LIVE") status = "live";
-
+ 
     // 台灣時間轉換
     const utcDate = new Date(event.date);
     const tpeDate = new Intl.DateTimeFormat("en-CA", { timeZone: userTimeZone, year:"numeric", month:"2-digit", day:"2-digit" }).format(utcDate);
     const tpeTime = new Intl.DateTimeFormat("zh-Hant-TW", { timeZone: userTimeZone, hour:"2-digit", minute:"2-digit", hour12:false }).format(utcDate);
-
+ 
     const venue = (competition.venue && competition.venue.fullName) || "場地未公布";
     const groupNote = event.season && event.season.slug ? "" : "";
     const noteText = (competition.notes && competition.notes[0] && competition.notes[0].headline) || event.shortName || "";
-
+ 
     const probabilities = computeProbabilities(home, away);
     const goalMarket = buildGoalMarket(home, away);
-
+ 
     return {
       id: event.id,
       date: tpeDate,
@@ -450,11 +450,11 @@ function normalizeEvents(events) {
     };
   }).filter(Boolean).sort((a, b) => a.utcDate - b.utcDate);
 }
-
+ 
 function getDateKey(date = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: userTimeZone, year:"numeric", month:"2-digit", day:"2-digit" }).format(date);
 }
-
+ 
 // ════════════════════════════════════════════════════════════════════════
 // 渲染函式
 // ════════════════════════════════════════════════════════════════════════
@@ -466,14 +466,14 @@ function renderDatePanel() {
   document.getElementById("todayDate").textContent = getDateKey(now);
   document.getElementById("todayTimezone").textContent = "台灣時間 (UTC+8)";
 }
-
+ 
 function renderMatchCard(match) {
   const home = teamByName(match.home);
   const away = teamByName(match.away);
   const [homeP, drawP, awayP] = match.probabilities;
   const scoreText = (match.homeGoals !== null && match.awayGoals !== null)
     ? match.homeGoals + " - " + match.awayGoals : null;
-
+ 
   return `
     <article class="match-card">
       <div class="match-meta">
@@ -516,12 +516,12 @@ function renderMatchCard(match) {
       </div>
     </article>`;
 }
-
+ 
 function renderDashboard() {
   const todayKey = getDateKey();
   const title = document.querySelector("#dashboard .section-title h2");
   const helper = document.querySelector("#dashboard .section-title span");
-
+ 
   if (dataSourceState === "error") {
     document.getElementById("todayMatches").innerHTML =
       `<div class="empty-state">⚠️ 目前無法連線到 ESPN 即時賽事資料。請稍後重新整理頁面再試一次。</div>`;
@@ -532,11 +532,11 @@ function renderDashboard() {
     document.getElementById("positiveEvCount").textContent = "—";
     return;
   }
-
+ 
   const allDates = [...new Set(matches.map(m => m.date))].sort();
   let visibleMatches = matches.filter(m => m.date === todayKey);
   let displayDate = todayKey, labelMode = "today";
-
+ 
   if (!visibleMatches.length) {
     const pastDates = allDates.filter(d => d < todayKey);
     const futureDates = allDates.filter(d => d > todayKey);
@@ -550,22 +550,22 @@ function renderDashboard() {
       labelMode = "next";
     } else labelMode = "done";
   }
-
+ 
   if (labelMode === "today") { title.textContent = "今日重點對戰"; helper.textContent = "賽前預測、即時狀態與賽後差距會在同一卡片內更新"; }
   else if (labelMode === "recent") { title.textContent = "最近比賽日：" + displayDate; helper.textContent = "今日無排程，顯示最近一個比賽日的結果與賽後分析"; }
   else if (labelMode === "next") { title.textContent = "下一個比賽日：" + displayDate; helper.textContent = "賽前預測已就緒，比賽開始後即時更新"; }
   else { title.textContent = "世界盃賽程已全部結束"; helper.textContent = "感謝追蹤本屆世界盃 AI 分析台"; }
-
+ 
   document.getElementById("todayMatches").innerHTML = visibleMatches.length
     ? visibleMatches.map(renderMatchCard).join("")
     : `<div class="empty-state">目前無賽程資料。</div>`;
-
+ 
   document.getElementById("todayCount").textContent = visibleMatches.length;
   document.getElementById("avgConfidence").textContent = visibleMatches.length
     ? Math.round(visibleMatches.reduce((s, m) => s + m.confidence, 0) / visibleMatches.length) : "—";
   document.getElementById("positiveEvCount").textContent = visibleMatches.filter(m => m.confidence >= 70).length;
 }
-
+ 
 function renderFilters() {
   const dates = [...new Set(matches.map(m => m.date))].sort();
   const dateFilterEl = document.getElementById("dateFilter");
@@ -583,7 +583,7 @@ function renderFilters() {
   const teamGroupFilterEl = document.getElementById("teamGroupFilter");
   if (teamGroupFilterEl) teamGroupFilterEl.innerHTML = `<option value="all">全部</option>`;
 }
-
+ 
 function renderSchedule() {
   const dateEl = document.getElementById("dateFilter");
   const stageEl = document.getElementById("stageFilter");
@@ -591,21 +591,21 @@ function renderSchedule() {
   const date = dateEl ? dateEl.value : "all";
   const stage = stageEl ? stageEl.value : "all";
   const status = statusEl ? statusEl.value : "all";
-
+ 
   const filtered = matches.filter(m =>
     (date === "all" || m.date === date) &&
     (stage === "all" || m.stage === stage) &&
     (status === "all" || m.status === status)
   );
-
+ 
   const rowsEl = document.getElementById("scheduleRows");
   if (!rowsEl) return;
-
+ 
   if (dataSourceState === "error") {
     rowsEl.innerHTML = `<tr><td colspan="9" style="color:var(--muted);padding:20px">⚠️ 無法連線到即時賽程資料，請稍後重新整理。</td></tr>`;
     return;
   }
-
+ 
   rowsEl.innerHTML = filtered.length ? filtered.map(match => {
     const scoreText = (match.homeGoals !== null && match.awayGoals !== null) ? match.homeGoals + "-" + match.awayGoals : "";
     return `<tr>
@@ -621,9 +621,9 @@ function renderSchedule() {
     </tr>`;
   }).join("") : `<tr><td colspan="9" style="color:var(--muted);padding:20px">沒有符合篩選條件的賽程。</td></tr>`;
 }
-
+ 
 let selectedTeam = null;
-
+ 
 function renderTeams() {
   const searchEl = document.getElementById("teamSearch");
   const query = searchEl ? searchEl.value.trim().toLowerCase() : "";
@@ -643,7 +643,7 @@ function renderTeams() {
     </article>`).join("");
   if (selectedTeam) renderTeamDetail(selectedTeam);
 }
-
+ 
 function renderTeamDetail(teamName) {
   const team = teamByName(teamName);
   const detailEl = document.getElementById("teamDetail");
@@ -676,7 +676,7 @@ function renderTeamDetail(teamName) {
     <h3>潛在風險</h3>
     <p>${team.risk}。正式版會把傷病、停賽、旅行與即時先發納入每日校正。</p>`;
 }
-
+ 
 function renderMatchDetail(matchId) {
   const match = matches.find(m => m.id === matchId);
   const detailEl = document.getElementById("matchDetail");
@@ -684,7 +684,7 @@ function renderMatchDetail(matchId) {
   const home = teamByName(match.home);
   const away = teamByName(match.away);
   const scoreText = (match.homeGoals !== null && match.awayGoals !== null) ? match.homeGoals + " - " + match.awayGoals : "尚未開賽";
-
+ 
   detailEl.innerHTML = `
     <article class="match-detail-card">
       <div class="match-detail-top">
@@ -746,13 +746,13 @@ function renderMatchDetail(matchId) {
       </div>
     </article>`;
 }
-
+ 
 function renderAudit() {
   const audited = matches.filter(m => m.audit);
   const total = audited.length;
   const correct = audited.filter(m => m.audit.isCorrect).length;
   const pct = total ? Math.round(correct / total * 100) : 0;
-
+ 
   const summaryEl = document.getElementById("auditSummary");
   if (summaryEl) {
     if (dataSourceState === "error") {
@@ -763,7 +763,7 @@ function renderAudit() {
       summaryEl.style.color = total ? "var(--green)" : "var(--muted)";
     }
   }
-
+ 
   if (total > 0) {
     const hitRateEl = document.querySelector(".model-card:nth-child(1) strong");
     if (hitRateEl) hitRateEl.textContent = pct + "%";
@@ -773,7 +773,7 @@ function renderAudit() {
     const brierEl = document.querySelector(".model-card:nth-child(2) strong");
     if (brierEl) brierEl.textContent = brierEst.toFixed(3);
   }
-
+ 
   const rowsEl = document.getElementById("auditRows");
   if (!rowsEl) return;
   rowsEl.innerHTML = audited.length ? audited.map(m => `<tr>
@@ -784,14 +784,14 @@ function renderAudit() {
       <td style="font-size:13px;color:#bdd0ca">${m.audit.reason}</td>
     </tr>`).join("") : `<tr><td colspan="5" style="color:var(--muted);padding:20px">⏳ 比賽結束並讀取到比分後，賽後檢討將自動出現在這裡。</td></tr>`;
 }
-
+ 
 function updateSyncLabels() {
   const syncChip = document.querySelector(".sync-chip");
   if (!syncChip) return;
   const nowText = new Intl.DateTimeFormat("zh-Hant-TW", { hour:"2-digit", minute:"2-digit", second:"2-digit", timeZone: userTimeZone }).format(new Date());
   syncChip.textContent = (dataSourceState === "error" ? "⚠️ 連線失敗 · " : "ESPN 即時同步 · ") + "最近嘗試 " + nowText;
 }
-
+ 
 // ════════════════════════════════════════════════════════════════════════
 // 主流程
 // ════════════════════════════════════════════════════════════════════════
@@ -813,13 +813,13 @@ async function refreshData() {
   renderAudit();
   updateSyncLabels();
 }
-
+ 
 function switchView(viewId) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("active", v.id === viewId));
   document.querySelectorAll(".nav-button").forEach(b => b.classList.toggle("active", b.dataset.view === viewId));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
-
+ 
 function bindEvents() {
   document.body.addEventListener("click", e => {
     const nav = e.target.closest("[data-view]");
@@ -836,11 +836,12 @@ function bindEvents() {
   const searchEl = document.getElementById("teamSearch");
   if (searchEl) searchEl.addEventListener("input", renderTeams);
 }
-
+ 
 async function init() {
   bindEvents();
   await refreshData();
   setInterval(refreshData, REFRESH_INTERVAL_MS);
 }
-
+ 
 init();
+ 
