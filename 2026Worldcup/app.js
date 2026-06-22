@@ -5,17 +5,19 @@
 //       使用者可對照台灣運彩 (https://article.sportslottery.com.tw/) 公告賠率自行判斷。
 // ════════════════════════════════════════════════════════════════════════
  
-const REFRESH_INTERVAL_MS = 60000; // 每 60 秒重新抓一次 ESPN 資料
+const REFRESH_INTERVAL_MS = 60000; // 每 60 秒重新檢查一次（僅對「尚未完賽」的日期重抓）
 const userTimeZone = "Asia/Taipei"; // 全站固定以台灣時間呈現（賽程網站慣例）
 const TWSL_URL = "https://article.sportslottery.com.tw/"; // 台灣運彩官網（賠率請至此查詢）
  
-// ESPN 公開 scoreboard API（無需 key）。一次抓整個賽事期間，前端自行依日期分組。
-const ESPN_SCOREBOARD_URL =
-  "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?limit=300&dates=20260611-20260719";
- 
-// CORS 备援：部分瀏覽器環境可能擋下對 espn.com 的直接請求，
-// 此時改走唯讀公開 CORS 代理（r.jina.ai）取得相同 JSON 內容。
-const ESPN_FALLBACK_PROXY = "https://r.jina.ai/" + ESPN_SCOREBOARD_URL;
+// ESPN 公開 scoreboard API（無需 key）。改為「按單一日期查詢」而非一次性大區間查詢，
+// 因為 ESPN 對超大區間查詢的回應有時不穩定（曾觀察到回傳內容與請求日期不符的情況）。
+function buildEspnUrlForDate(dateStr) {
+  // dateStr 格式 YYYYMMDD
+  return "https://site.api.espn.com/apis/site/v2/sports/soccer/fifa.world/scoreboard?dates=" + dateStr;
+}
+function buildEspnFallbackProxy(url) {
+  return "https://r.jina.ai/" + url;
+}
  
 // ─── 球隊背景資料（戰術風格、球員、教練 — 用於 AI 分析文字，不含賽程本身）────
 const countryCodes = {
@@ -372,14 +374,34 @@ function buildEvThreshold(probabilities) {
 // ════════════════════════════════════════════════════════════════════════
 // ESPN 即時資料抓取與正規化
 // ════════════════════════════════════════════════════════════════════════
-let espnEvents = [];      // ESPN 原始 events
-let matches = [];         // 正規化後的比賽物件（給渲染函式用）
-let dataSourceState = "loading"; // loading | live | error
+// ════════════════════════════════════════════════════════════════════════
+// 資料層：按日查詢 + 記憶體快取
+// ════════════════════════════════════════════════════════════════════════
+// matchesByDate: { "2026-06-20": [match, match, ...] }  -- 以台灣時間日期為 key
+// dateFetchState: { "2026-06-20": "live" | "error" }     -- 該日期最後一次抓取結果
+// 已完賽（全部比賽 status === "final"）的日期視為「穩定」，之後不再重抓，
+// 節省 API 呼叫並避免畫面因重複請求而閃爍。
+let matchesByDate = {};
+let dateFetchState = {};
+let dataSourceState = "loading"; // loading | live | error（給首頁整體狀態用）
+let matches = [];                // 目前畫面上使用的攤平陣列（由 matchesByDate 彙整而成）
  
-async function fetchEspnSchedule() {
-  // 先試直接抓（多數瀏覽器環境 ESPN site API 允許跨網域 GET）
+function toEspnDateStr(dateKey) {
+  // "2026-06-20" -> "20260620"
+  return dateKey.replace(/-/g, "");
+}
+ 
+function shiftDateKey(dateKey, days) {
+  const d = new Date(dateKey + "T12:00:00+08:00"); // 用正午避免日界問題
+  d.setDate(d.getDate() + days);
+  return getDateKey(d);
+}
+ 
+async function fetchEspnForDate(dateKey) {
+  const url = buildEspnUrlForDate(toEspnDateStr(dateKey));
+  // 先試直接抓
   try {
-    const res = await fetch(ESPN_SCOREBOARD_URL, { cache: "no-store" });
+    const res = await fetch(url, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data.events)) return data.events;
@@ -388,7 +410,7 @@ async function fetchEspnSchedule() {
  
   // 備援：透過唯讀代理重新嘗試一次
   try {
-    const res2 = await fetch(ESPN_FALLBACK_PROXY, { cache: "no-store" });
+    const res2 = await fetch(buildEspnFallbackProxy(url), { cache: "no-store" });
     if (res2.ok) {
       const text = await res2.text();
       const data = JSON.parse(text);
@@ -424,7 +446,6 @@ function normalizeEvents(events) {
     const tpeTime = new Intl.DateTimeFormat("zh-Hant-TW", { timeZone: userTimeZone, hour:"2-digit", minute:"2-digit", hour12:false }).format(utcDate);
  
     const venue = (competition.venue && competition.venue.fullName) || "場地未公布";
-    const groupNote = event.season && event.season.slug ? "" : "";
     const noteText = (competition.notes && competition.notes[0] && competition.notes[0].headline) || event.shortName || "";
  
     const probabilities = computeProbabilities(home, away);
@@ -449,6 +470,42 @@ function normalizeEvents(events) {
         : null
     };
   }).filter(Boolean).sort((a, b) => a.utcDate - b.utcDate);
+}
+ 
+// 判斷某個已快取日期是否「穩定」（全部比賽已完賽，或該日期是過去日期且已抓過一次）
+// 穩定的日期不會被自動重抓，只有手動切換到該日期時才會強制刷新一次。
+function isDateStable(dateKey, todayKey) {
+  const dayMatches = matchesByDate[dateKey];
+  if (!dayMatches || !dayMatches.length) return false;
+  const allFinal = dayMatches.every(m => m.status === "final");
+  const isPast = dateKey < todayKey;
+  return allFinal || isPast;
+}
+ 
+// 抓取（或從快取讀取）指定日期的比賽。force=true 時強制重抓，忽略快取。
+async function ensureDateLoaded(dateKey, force = false) {
+  const todayKey = getDateKey();
+  if (!force && matchesByDate[dateKey] && isDateStable(dateKey, todayKey)) {
+    return matchesByDate[dateKey]; // 已穩定快取，不重抓
+  }
+  const events = await fetchEspnForDate(dateKey);
+  if (events) {
+    matchesByDate[dateKey] = normalizeEvents(events);
+    dateFetchState[dateKey] = "live";
+  } else if (!matchesByDate[dateKey]) {
+    // 從未抓到過資料才標記錯誤；若先前已有快取，保留舊資料不覆蓋
+    dateFetchState[dateKey] = "error";
+    matchesByDate[dateKey] = matchesByDate[dateKey] || [];
+  }
+  return matchesByDate[dateKey];
+}
+ 
+// 彙整目前記憶體中所有已快取日期的比賽，攤平成單一陣列（給賽程表/球隊頁/模型表現頁使用）
+function flattenCachedMatches() {
+  return Object.keys(matchesByDate)
+    .sort()
+    .flatMap(d => matchesByDate[d])
+    .sort((a, b) => a.utcDate - b.utcDate);
 }
  
 function getDateKey(date = new Date()) {
@@ -522,69 +579,86 @@ function renderDashboard() {
   const title = document.querySelector("#dashboard .section-title h2");
   const helper = document.querySelector("#dashboard .section-title span");
  
-  if (dataSourceState === "error") {
-    document.getElementById("todayMatches").innerHTML =
-      `<div class="empty-state">⚠️ 目前無法連線到 ESPN 即時賽事資料。請稍後重新整理頁面再試一次。</div>`;
-    title.textContent = "今日重點對戰";
-    helper.textContent = "資料來源暫時無法連線";
-    document.getElementById("todayCount").textContent = "—";
-    document.getElementById("avgConfidence").textContent = "—";
-    document.getElementById("positiveEvCount").textContent = "—";
-    return;
+  const todayMatches = matchesByDate[todayKey] || [];
+  const yesterdayKey = shiftDateKey(todayKey, -1);
+  const yesterdayMatches = (matchesByDate[yesterdayKey] || []).filter(m => m.status === "final");
+ 
+  let primaryMatches = todayMatches;
+  let primaryLabel = "今日重點對戰";
+  let primaryHelper = "賽前預測、即時狀態與賽後差距會在同一卡片內更新";
+ 
+  if (!todayMatches.length) {
+    // 今日沒有賽事，往未來找最近一天（最多往前找 3 天，避免無限查找）
+    let found = null;
+    for (let i = 1; i <= 3; i++) {
+      const futureKey = shiftDateKey(todayKey, i);
+      const dayMatches = matchesByDate[futureKey];
+      if (dayMatches && dayMatches.length) { found = { key: futureKey, list: dayMatches }; break; }
+    }
+    if (found) {
+      primaryMatches = found.list;
+      primaryLabel = "未來賽程預估：" + found.key;
+      primaryHelper = "今日無排程，顯示未來一天內的賽前預測";
+    } else {
+      primaryLabel = "今日無排程";
+      primaryHelper = "請至「賽程」頁查看其他日期";
+    }
   }
  
-  const allDates = [...new Set(matches.map(m => m.date))].sort();
-  let visibleMatches = matches.filter(m => m.date === todayKey);
-  let displayDate = todayKey, labelMode = "today";
+  title.textContent = primaryLabel;
+  helper.textContent = primaryHelper;
  
-  if (!visibleMatches.length) {
-    const pastDates = allDates.filter(d => d < todayKey);
-    const futureDates = allDates.filter(d => d > todayKey);
-    if (pastDates.length) {
-      displayDate = pastDates[pastDates.length - 1];
-      visibleMatches = matches.filter(m => m.date === displayDate);
-      labelMode = "recent";
-    } else if (futureDates.length) {
-      displayDate = futureDates[0];
-      visibleMatches = matches.filter(m => m.date === displayDate);
-      labelMode = "next";
-    } else labelMode = "done";
+  // 首頁同時顯示：主要區塊（今日或未來最近一天）+ 昨日已完賽（若有）
+  const sections = [];
+  if (primaryMatches.length) {
+    sections.push(primaryMatches.map(renderMatchCard).join(""));
+  } else {
+    sections.push(`<div class="empty-state">目前無賽程資料，請稍後再試或查看「賽程」頁。</div>`);
   }
+  if (yesterdayMatches.length) {
+    sections.push(`<div class="section-title" style="margin-top:24px"><h2>昨日賽果（${yesterdayKey}）</h2><span>已完賽比賽的賽後檢討已自動產生</span></div>`);
+    sections.push(yesterdayMatches.map(renderMatchCard).join(""));
+  }
+  document.getElementById("todayMatches").innerHTML = sections.join("");
  
-  if (labelMode === "today") { title.textContent = "今日重點對戰"; helper.textContent = "賽前預測、即時狀態與賽後差距會在同一卡片內更新"; }
-  else if (labelMode === "recent") { title.textContent = "最近比賽日：" + displayDate; helper.textContent = "今日無排程，顯示最近一個比賽日的結果與賽後分析"; }
-  else if (labelMode === "next") { title.textContent = "下一個比賽日：" + displayDate; helper.textContent = "賽前預測已就緒，比賽開始後即時更新"; }
-  else { title.textContent = "世界盃賽程已全部結束"; helper.textContent = "感謝追蹤本屆世界盃 AI 分析台"; }
+  const allVisible = primaryMatches.concat(yesterdayMatches);
+  document.getElementById("todayCount").textContent = allVisible.length;
+  document.getElementById("avgConfidence").textContent = allVisible.length
+    ? Math.round(allVisible.reduce((s, m) => s + m.confidence, 0) / allVisible.length) : "—";
+  document.getElementById("positiveEvCount").textContent = allVisible.filter(m => m.confidence >= 70).length;
+}
  
-  document.getElementById("todayMatches").innerHTML = visibleMatches.length
-    ? visibleMatches.map(renderMatchCard).join("")
-    : `<div class="empty-state">目前無賽程資料。</div>`;
- 
-  document.getElementById("todayCount").textContent = visibleMatches.length;
-  document.getElementById("avgConfidence").textContent = visibleMatches.length
-    ? Math.round(visibleMatches.reduce((s, m) => s + m.confidence, 0) / visibleMatches.length) : "—";
-  document.getElementById("positiveEvCount").textContent = visibleMatches.filter(m => m.confidence >= 70).length;
+function allTournamentDates() {
+  // 賽事期間 6/11 ~ 7/19，產生完整日期清單供下拉選單使用（不需預先抓取資料）
+  const start = new Date("2026-06-11T12:00:00+08:00");
+  const end = new Date("2026-07-19T12:00:00+08:00");
+  const list = [];
+  for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+    list.push(getDateKey(d));
+  }
+  return list;
 }
  
 function renderFilters() {
-  const dates = [...new Set(matches.map(m => m.date))].sort();
   const dateFilterEl = document.getElementById("dateFilter");
-  if (dateFilterEl) {
-    dateFilterEl.innerHTML = `<option value="all" selected>全部日期</option>` +
-      dates.map(d => `<option value="${d}">${d}</option>`).join("");
+  if (dateFilterEl && !dateFilterEl.dataset.populated) {
+    const dates = allTournamentDates();
+    const todayKey = getDateKey();
+    dateFilterEl.innerHTML = `<option value="all">全部（僅顯示已查詢過的日期）</option>` +
+      dates.map(d => `<option value="${d}" ${d === todayKey ? "selected" : ""}>${d}${d === todayKey ? "（今日）" : ""}</option>`).join("");
+    dateFilterEl.dataset.populated = "1";
   }
-  const stages = [...new Set(matches.map(m => m.stage))];
+  const stages = [...new Set(flattenCachedMatches().map(m => m.stage))];
   const stageEl = document.getElementById("stageFilter");
   if (stageEl) {
     stageEl.innerHTML = `<option value="all">全部賽制</option>` +
       stages.map(s => `<option value="${s}">${s}</option>`).join("");
   }
-  // 球隊群組篩選：依目前抓到的隊伍動態列出（小組賽組別資訊由 ESPN note 取得時填入，否則略過）
   const teamGroupFilterEl = document.getElementById("teamGroupFilter");
   if (teamGroupFilterEl) teamGroupFilterEl.innerHTML = `<option value="all">全部</option>`;
 }
  
-function renderSchedule() {
+async function renderSchedule() {
   const dateEl = document.getElementById("dateFilter");
   const stageEl = document.getElementById("stageFilter");
   const statusEl = document.getElementById("statusFilter");
@@ -592,19 +666,22 @@ function renderSchedule() {
   const stage = stageEl ? stageEl.value : "all";
   const status = statusEl ? statusEl.value : "all";
  
-  const filtered = matches.filter(m =>
-    (date === "all" || m.date === date) &&
-    (stage === "all" || m.stage === stage) &&
-    (status === "all" || m.status === status)
-  );
- 
   const rowsEl = document.getElementById("scheduleRows");
   if (!rowsEl) return;
  
-  if (dataSourceState === "error") {
-    rowsEl.innerHTML = `<tr><td colspan="9" style="color:var(--muted);padding:20px">⚠️ 無法連線到即時賽程資料，請稍後重新整理。</td></tr>`;
-    return;
+  // 選了特定日期 → 即時查詢該日（已穩定快取則不重抓）；選「全部」→ 只用目前已快取過的資料彙整
+  let sourceMatches;
+  if (date !== "all") {
+    rowsEl.innerHTML = `<tr><td colspan="9" style="color:var(--muted);padding:20px">查詢中…</td></tr>`;
+    sourceMatches = await ensureDateLoaded(date);
+  } else {
+    sourceMatches = flattenCachedMatches();
   }
+ 
+  const filtered = sourceMatches.filter(m =>
+    (stage === "all" || m.stage === stage) &&
+    (status === "all" || m.status === status)
+  );
  
   rowsEl.innerHTML = filtered.length ? filtered.map(match => {
     const scoreText = (match.homeGoals !== null && match.awayGoals !== null) ? match.homeGoals + "-" + match.awayGoals : "";
@@ -619,7 +696,7 @@ function renderSchedule() {
       <td>${match.confidence}</td>
       <td>${statusLabel(match.status)}${scoreText ? " · <strong style=\"color:var(--green)\">" + scoreText + "</strong>" : ""}</td>
     </tr>`;
-  }).join("") : `<tr><td colspan="9" style="color:var(--muted);padding:20px">沒有符合篩選條件的賽程。</td></tr>`;
+  }).join("") : `<tr><td colspan="9" style="color:var(--muted);padding:20px">${date === "all" ? "尚未查詢任何日期，請從上方選擇日期查看賽程。" : "這天沒有賽事，或查詢失敗請稍後再試。"}</td></tr>`;
 }
  
 let selectedTeam = null;
@@ -648,7 +725,7 @@ function renderTeamDetail(teamName) {
   const team = teamByName(teamName);
   const detailEl = document.getElementById("teamDetail");
   if (!team || !detailEl) return;
-  const upcoming = matches.filter(m => (m.home === teamName || m.away === teamName));
+  const upcoming = flattenCachedMatches().filter(m => (m.home === teamName || m.away === teamName));
   detailEl.innerHTML = `
     <div class="detail-head">
       ${flag(team.name)}
@@ -678,7 +755,7 @@ function renderTeamDetail(teamName) {
 }
  
 function renderMatchDetail(matchId) {
-  const match = matches.find(m => m.id === matchId);
+  const match = flattenCachedMatches().find(m => m.id === matchId);
   const detailEl = document.getElementById("matchDetail");
   if (!match || !detailEl) return;
   const home = teamByName(match.home);
@@ -748,7 +825,7 @@ function renderMatchDetail(matchId) {
 }
  
 function renderAudit() {
-  const audited = matches.filter(m => m.audit);
+  const audited = flattenCachedMatches().filter(m => m.audit);
   const total = audited.length;
   const correct = audited.filter(m => m.audit.isCorrect).length;
   const pct = total ? Math.round(correct / total * 100) : 0;
@@ -789,26 +866,36 @@ function updateSyncLabels() {
   const syncChip = document.querySelector(".sync-chip");
   if (!syncChip) return;
   const nowText = new Intl.DateTimeFormat("zh-Hant-TW", { hour:"2-digit", minute:"2-digit", second:"2-digit", timeZone: userTimeZone }).format(new Date());
-  syncChip.textContent = (dataSourceState === "error" ? "⚠️ 連線失敗 · " : "ESPN 即時同步 · ") + "最近嘗試 " + nowText;
+  const hasError = Object.values(dateFetchState).includes("error") && flattenCachedMatches().length === 0;
+  syncChip.textContent = (hasError ? "⚠️ 連線異常 · " : "ESPN 即時同步 · ") + "最近嘗試 " + nowText;
 }
  
 // ════════════════════════════════════════════════════════════════════════
-// 主流程
+// 主流程：首頁只主動查詢「今天／昨天／明天」三天，避免一次性大區間查詢。
+// 其餘日期（賽程頁手動選擇時）採隨選查詢 + 快取，球隊/模型表現頁則彙整
+// 記憶體中所有已查過的日期。
 // ════════════════════════════════════════════════════════════════════════
+async function loadHomepageWindow() {
+  const todayKey = getDateKey();
+  const yesterdayKey = shiftDateKey(todayKey, -1);
+  const tomorrowKey = shiftDateKey(todayKey, 1);
+ 
+  // 三天平行查詢（皆走快取機制：已穩定的日期不會重抓）
+  await Promise.all([
+    ensureDateLoaded(yesterdayKey),
+    ensureDateLoaded(todayKey),
+    ensureDateLoaded(tomorrowKey)
+  ]);
+ 
+  dataSourceState = flattenCachedMatches().length > 0 ? "live" : "error";
+}
+ 
 async function refreshData() {
-  const events = await fetchEspnSchedule();
-  if (events && events.length) {
-    espnEvents = events;
-    matches = normalizeEvents(events);
-    dataSourceState = "live";
-  } else if (matches.length === 0) {
-    dataSourceState = "error";
-  }
-  // 若本次抓取失敗但先前已有資料，維持顯示舊資料並標記非即時
+  await loadHomepageWindow();
   renderDatePanel();
   renderFilters();
   renderDashboard();
-  renderSchedule();
+  await renderSchedule();
   renderTeams();
   renderAudit();
   updateSyncLabels();
@@ -840,7 +927,15 @@ function bindEvents() {
 async function init() {
   bindEvents();
   await refreshData();
-  setInterval(refreshData, REFRESH_INTERVAL_MS);
+  // 定期刷新只重抓「今天」這一天（若尚未全部完賽），其餘已快取日期不受影響
+  setInterval(async () => {
+    const todayKey = getDateKey();
+    await ensureDateLoaded(todayKey, true);
+    renderDatePanel();
+    renderDashboard();
+    renderAudit();
+    updateSyncLabels();
+  }, REFRESH_INTERVAL_MS);
 }
  
 init();
